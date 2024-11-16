@@ -1,5 +1,5 @@
 # AdaptivePortfolioManagement
-This repo serves to replicate the paper A Deep Reinforcement Learning Framework for the Financial Portfolio Management Problem
+This repo serves to replicate the paper __A Deep Reinforcement Learning Framework for the Financial Portfolio Management Problem__
 located in https://arxiv.org/abs/1706.10059
 
 This repo is originally created for Reinforcement Learning Project at Columbia University
