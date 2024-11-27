@@ -146,7 +146,7 @@ def main():
 
     port = Portfolio(asset_names=assets)
     kraken_ds = KrakenDataSet(port)
-    for xt in dataset:
+    for xt in kraken_ds:
         print(xt)
 
 
