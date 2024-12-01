@@ -57,37 +57,7 @@ class KrakenDataSet(Dataset):
         xt[0] = (self.close_pr[start:end:,] / self.close_pr[end - 1,]).T
         xt[1] = (self.high_pr[start:end:,] / self.close_pr[end - 1,]).T
         xt[2] = (self.low_pr[start:end:,] / self.close_pr[end - 1,]).T
-        # updated_pvm = self.pvm[end - 2]
         return xt, end - 2
-
-
-def custom_collate_fn(batch):
-    """
-    Custom collate function to batch data from KrakenDataSet without unnecessary copies.
-
-    Args:
-    - batch: List of tuples where each element is a (xt, pvm) pair.
-      xt: A tensor of shape [3, msecurities, window_size].
-      pvm: A scalar tensor.
-
-    Returns:
-    - A tuple (batched_xt, batched_pvm) where:
-      - batched_xt: A tensor of shape [batch_size, 3, msecurities, window_size]
-      - batched_pvm: A tensor of shape [batch_size]
-    """
-    # Separate the batch into xt (list of [3, msecurities, window_size] tensors)
-    xt_batch = [item[0] for item in batch]  # List of xt tensors
-    pvm_batch = [item[1] for item in batch]  # List of pvm tensors
-
-    # Stack xt_batch along the batch dimension to create a single tensor of shape [batch_size, 3, msecurities, window_size]
-    batched_xt = torch.stack(
-        xt_batch, dim=0
-    )  # [batch_size, 3, msecurities, window_size]
-
-    # Stack pvm_batch along the batch dimension to create a single tensor of shape [batch_size]
-    # [batch_size]
-
-    return batched_xt, pvm_batch
 
 
 class SlidingWindowBatchSampler(Sampler):
@@ -111,7 +81,7 @@ class SlidingWindowBatchSampler(Sampler):
         """
 
         self.dataset = dataset
-        self.batch_size = batch_size  # This is now batch size instead of window size
+        self.batch_size = batch_size
         self.step_size = step_size
 
         # we are getting data from dataset, so first index starts at index 0
@@ -168,7 +138,7 @@ def main():
     msecurities = port.m_noncash_securities
     # window_size - 1 pretains to index at time t
     # first index for pvm wt-1 is window_size - 2 index
-    # pvm = (torch.ones(nobs, msecurities) / msecurities).to(device)
+
     pvm = PortfolioVectorMemory(nsamples=nsamples, msecurities=msecurities)
     kraken_ds = KrakenDataSet(port, window_size=WINDOW_SIZE)
 
