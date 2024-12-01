@@ -6,7 +6,6 @@
 
 from typing import Iterator, List
 
-import pandas as pd
 import torch
 from torch.utils.data import DataLoader, Dataset, Sampler
 
@@ -150,7 +149,6 @@ def main():
         kraken_ds,
         batch_size=1,
         batch_sampler=batch_sampler,
-        # collate_fn=custom_collate_fn,
         pin_memory=True,
         generator=torch.Generator(device="mps"),
     )
