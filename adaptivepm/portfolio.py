@@ -3,12 +3,10 @@ from __future__ import annotations
 import os
 import pickle
 from dataclasses import dataclass, field
-from typing import Dict, Iterator, List
+from typing import Dict, Iterator, List, Optional
 
-import numpy as np
 import pandas as pd
 import torch
-from torch.utils.data import Dataset
 
 from adaptivepm import Asset
 
@@ -34,6 +32,7 @@ class Portfolio:
     __prices: Dict[str, pd.DataFrame] = field(init=False, default_factory=lambda: {})
     __assets: Dict[str, Asset] = field(init=False)
     nsecurities: int = field(init=False, default=0)
+    m_noncash_securities: int = field(init=False, default=0)
 
     def __post_init__(self):
         self._load_pickle_object()
@@ -48,6 +47,7 @@ class Portfolio:
             for asset_name in self.asset_names
         }
         self.nsecurities = len(self.__assets)
+        self.m_noncash_securities = self.nsecurities - 1
         self.nobs = self.__prices["close"].shape[0]
 
     def _load_pickle_object(self):
@@ -91,44 +91,34 @@ class Portfolio:
     def get_low_price(self):
         return self.__prices["low"]
 
-    def generate_portfolio_weights(self):
-        num_periods = next(self).size
-        total_assets = self.security_count
-        weights = np.zeros((num_periods, total_assets))
-        weights[0, 0] = 1.0
-        return weights
+
+@dataclass
+class PortfolioVectorMemory:
+    """Implements the Portfolio Vector Memory inspired by the idea of experience replay memory (Mnih et al., 2016),
+    see pg. 13-14 of paper
+    A Deep Reinforcement Learning Framework for the Financial Portfolio Management Problem
+    """
+
+    nsamples: int
+    msecurities: int
+    initial_weight: Optional[torch.tensor] = None
+    memory: torch.tensor = field(init=False)
+    device: torch.device = field(init=False)
+
+    def __post_init__(self):
+        self.device = torch.device("mps" if torch.mps.is_available() else "cpu")
+        self.memory = torch.ones(self.nsamples, self.msecurities) / self.msecurities
+        self.memory = self.memory.to(self.device)
+
+    def update_memory_stack(self, new_weights: torch.tensor, indices):
+        self.memory[indices] = new_weights
+
+    def get_memory_stack(self, indices):
+        return self.memory[indices]
 
 
-class KrakenDataSet(Dataset):
-    def __init__(self, portfolio: Portfolio, nperiods: int = 50):
-        self.portfolio = portfolio
-        self.nperiods = nperiods
-        self.close_pr = torch.tensor(self.portfolio.get_close_price().values)
-        self.high_pr = torch.tensor(self.portfolio.get_high_price().values)
-        self.low_pr = torch.tensor(self.portfolio.get_low_price().values)
-
-    def __len__(self):
-        return self.portfolio.total_observations
-
-    def __getitem__(self, idx):
-        nsecurities = self.portfolio.nsecurities
-        xt = torch.zeros(3, self.nperiods, nsecurities)
-        xt[0] = (
-            self.close_pr[idx : self.nperiods + idx :,]
-            / self.close_pr[self.nperiods + idx - 1,]
-        )
-        xt[1] = (
-            self.high_pr[idx : self.nperiods + idx :,]
-            / self.close_pr[self.nperiods + idx - 1,]
-        )
-        xt[2] = (
-            self.low_pr[idx : self.nperiods + idx :,]
-            / self.close_pr[self.nperiods + idx - 1,]
-        )
-        return xt
-
-
-def main():
+if __name__ == "__main__":
+    # used for debugging purposes
     assets: List[str] = [
         "CASH",
         "SOL",
@@ -143,11 +133,4 @@ def main():
         "TRX",
         "MATIC",
     ]
-
     port = Portfolio(asset_names=assets)
-    kraken_ds = KrakenDataSet(port)
-    for xt in kraken_ds:
-        print(xt)
-
-
-main()
