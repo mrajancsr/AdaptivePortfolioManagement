@@ -3,10 +3,9 @@ from __future__ import annotations
 import os
 import pickle
 from dataclasses import dataclass, field
-from typing import Dict, Iterator, List, Optional
+from typing import Dict, Iterator, List
 
 import pandas as pd
-import torch
 
 from adaptivepm import Asset
 
@@ -90,31 +89,6 @@ class Portfolio:
 
     def get_low_price(self):
         return self.__prices["low"]
-
-
-@dataclass
-class PortfolioVectorMemory:
-    """Implements the Portfolio Vector Memory inspired by the idea of experience replay memory (Mnih et al., 2016),
-    see pg. 13-14 of paper
-    A Deep Reinforcement Learning Framework for the Financial Portfolio Management Problem
-    """
-
-    n_samples: int
-    m_assets: int
-    initial_weight: Optional[torch.tensor] = None
-    memory: torch.tensor = field(init=False)
-    device: torch.device = field(init=False)
-
-    def __post_init__(self):
-        self.device = torch.device("mps" if torch.mps.is_available() else "cpu")
-        self.memory = torch.ones(self.n_samples, self.m_assets) / self.m_assets
-        self.memory = self.memory.to(self.device)
-
-    def update_memory_stack(self, new_weights: torch.tensor, indices: torch.tensor):
-        self.memory[indices] = new_weights
-
-    def get_memory_stack(self, indices):
-        return self.memory[indices]
 
 
 if __name__ == "__main__":
