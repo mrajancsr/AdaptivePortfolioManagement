@@ -50,25 +50,29 @@ class Actor(nn.Module):
         ----------
         input : torch.tensor
             price tensor Xt comprised of close, high and low prices
-            dim = (batch_size, features, msecurities, window_size)
+            dim = (batch_size, kfeatures, massets, window_size)
             window_size pretains to last 50 trading prices
         pvm : torch.tensor
             weights w(t-1) from portfolio vector memory at time t-1
-            dim = (batch_size, mfeatures)
+            dim = (batch_size, massets)
 
         Returns
         -------
-        torch.tensor, dim = (batch_size, mfeatures)
+        torch.tensor, dim = (batch_size, massets)
             action at time t
         """
         batch_size = input.shape[0]
         x = self.model(input)
-        prev_weights = pvm.unsqueeze(2)
-        prev_weights = prev_weights.repeat(1, 1, 1)
-        x = torch.cat([x, prev_weights.unsqueeze(1)], dim=1)
+        prev_weights = pvm.unsqueeze(2).repeat(1, 1, 1).unsqueeze(1)
+        x = torch.cat([x, prev_weights], dim=1)
         x = self.model2(x)
         cash_bias = self.cash_bias.expand(batch_size, 1, 1, 1)
         x = torch.cat([cash_bias, x], dim=2)
         portfolio_weights = self.softmax(x)
 
         return portfolio_weights.view(batch_size, self.output_dim)
+
+
+class Critic(nn.Module):
+    def __init__(self, input_channels: int, massets: int):
+        pass

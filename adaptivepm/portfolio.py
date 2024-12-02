@@ -31,8 +31,8 @@ class Portfolio:
     asset_names: List[str]
     __prices: Dict[str, pd.DataFrame] = field(init=False, default_factory=lambda: {})
     __assets: Dict[str, Asset] = field(init=False)
-    nsecurities: int = field(init=False, default=0)
-    m_noncash_securities: int = field(init=False, default=0)
+    m_assets: int = field(init=False, default=0)
+    m_noncash_assets: int = field(init=False, default=0)
 
     def __post_init__(self):
         self._load_pickle_object()
@@ -46,9 +46,9 @@ class Portfolio:
             )
             for asset_name in self.asset_names
         }
-        self.nsecurities = len(self.__assets)
-        self.m_noncash_securities = self.nsecurities - 1
-        self.nobs = self.__prices["close"].shape[0]
+        self.m_assets = len(self.__assets)
+        self.m_noncash_assets = self.m_assets - 1
+        self.n_samples = self.__prices["close"].shape[0]
 
     def _load_pickle_object(self):
         with open(PATH_TO_PRICES_PICKLE, "rb") as f:
@@ -58,8 +58,8 @@ class Portfolio:
         yield from self.assets()
 
     def __repr__(self) -> str:
-        return f"Portfolio size: {self.security_count} \
-            \nAssets: {[asset.name for asset in self.assets()]}"
+        return f"Portfolio size: {self.m_assets} \
+            \nm_assets: {[asset.name for asset in self.assets()]}"
 
     def get_asset(self, name: str) -> Asset:
         """Returns the asset in the portfolio given the name of the asset
@@ -99,18 +99,18 @@ class PortfolioVectorMemory:
     A Deep Reinforcement Learning Framework for the Financial Portfolio Management Problem
     """
 
-    nsamples: int
-    msecurities: int
+    n_samples: int
+    m_assets: int
     initial_weight: Optional[torch.tensor] = None
     memory: torch.tensor = field(init=False)
     device: torch.device = field(init=False)
 
     def __post_init__(self):
         self.device = torch.device("mps" if torch.mps.is_available() else "cpu")
-        self.memory = torch.ones(self.nsamples, self.msecurities) / self.msecurities
+        self.memory = torch.ones(self.n_samples, self.m_assets) / self.m_assets
         self.memory = self.memory.to(self.device)
 
-    def update_memory_stack(self, new_weights: torch.tensor, indices):
+    def update_memory_stack(self, new_weights: torch.tensor, indices: torch.tensor):
         self.memory[indices] = new_weights
 
     def get_memory_stack(self, indices):
@@ -119,7 +119,7 @@ class PortfolioVectorMemory:
 
 if __name__ == "__main__":
     # used for debugging purposes
-    assets: List[str] = [
+    m_assets: List[str] = [
         "CASH",
         "SOL",
         "ADA",
@@ -133,4 +133,5 @@ if __name__ == "__main__":
         "TRX",
         "MATIC",
     ]
-    port = Portfolio(asset_names=assets)
+    port = Portfolio(asset_names=m_assets)
+    print(port)

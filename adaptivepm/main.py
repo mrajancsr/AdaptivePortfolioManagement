@@ -20,8 +20,8 @@ class KrakenDataSet(Dataset):
 
     Parameters
     ----------
-    Dataset : _type_
-        Base class from torch utils class that allows to iterate over dataset
+    Dataset : torch.utils.data.dataset.Dataset
+        ABC from torch utils class that represents a dataset
     """
 
     def __init__(
@@ -46,13 +46,15 @@ class KrakenDataSet(Dataset):
         self.device = device
 
     def __len__(self):
-        return self.portfolio.nobs
+        return self.portfolio.n_samples
 
     def __getitem__(self, idx):
-        msecurities = self.portfolio.m_noncash_securities
+        m_noncash_assets = self.portfolio.m_noncash_assets
         start = idx * self.step_size
         end = start + self.window_size
-        xt = torch.zeros(3, msecurities, self.window_size).to(self.device)
+
+        # the price tensor
+        xt = torch.zeros(3, m_noncash_assets, self.window_size).to(self.device)
         xt[0] = (self.close_pr[start:end:,] / self.close_pr[end - 1,]).T
         xt[1] = (self.high_pr[start:end:,] / self.close_pr[end - 1,]).T
         xt[2] = (self.low_pr[start:end:,] / self.close_pr[end - 1,]).T
@@ -105,17 +107,13 @@ class SlidingWindowBatchSampler(Sampler):
         return (self.end_index - self.batch_size) // self.step_size + 1
 
 
-def modify_tensor(my_tensor, idx):
-    return my_tensor[idx]
-
-
 def main():
-    device = "mps"
-    BATCH_SIZE = 50
-    WINDOW_SIZE = 50
-    STEP_SIZE = 1
+    BATCH_SIZE = 50  # training is done in mini-batches
+    WINDOW_SIZE = 50  # last n trading days for the price tensor
+    STEP_SIZE = 1  # for rolling window batch sampler
+    DEVICE = "mps"
 
-    assets: List[str] = [
+    asset_names: List[str] = [
         "CASH",
         "SOL",
         "ADA",
@@ -130,17 +128,12 @@ def main():
         "MATIC",
     ]
 
-    port = Portfolio(asset_names=assets)
+    port = Portfolio(asset_names=asset_names)
 
-    # portfolio memory vector
-    nsamples = port.nobs
-    msecurities = port.m_noncash_securities
-    # window_size - 1 pretains to index at time t
-    # first index for pvm wt-1 is window_size - 2 index
-
-    pvm = PortfolioVectorMemory(nsamples=nsamples, msecurities=msecurities)
+    # create the dataset which returns price tensor and t-2 index
     kraken_ds = KrakenDataSet(port, window_size=WINDOW_SIZE)
 
+    # a rolling batch is needed for financial time series
     batch_sampler = SlidingWindowBatchSampler(
         kraken_ds, batch_size=BATCH_SIZE, step_size=STEP_SIZE
     )
@@ -150,15 +143,26 @@ def main():
         batch_size=1,
         batch_sampler=batch_sampler,
         pin_memory=True,
-        generator=torch.Generator(device="mps"),
+        generator=torch.Generator(device=DEVICE),
     )
+
+    # portfolio memory vector to keep track of previous weights wt_prev
+    n_samples = port.n_samples
+    m_noncash_assets = port.m_noncash_assets
+
+    # window_size - 1 is index at time t
+    # window_size - 2 is index at time t-1
+    # Hence first index for pvm wt-1 is window_size - 2 index
+    pvm = PortfolioVectorMemory(n_samples=n_samples, m_assets=m_noncash_assets)
 
     actor = Actor()
 
-    for xt, wt_prev in kraken_dl:
+    for xt, prev_index in kraken_dl:
         # returns the portfolio weight wt at time t which is the action
-        wt = actor(xt, pvm.get_memory_stack(wt_prev))
-        print(wt)
+        wt = actor(xt, pvm.get_memory_stack(prev_index))
+
+        # update the pvm with non cash assets only
+        pvm.update_memory_stack(wt[:, 1:], prev_index + 1)
 
 
 if __name__ == "__main__":
