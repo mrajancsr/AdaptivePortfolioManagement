@@ -2,6 +2,7 @@ from collections import deque
 from dataclasses import dataclass, field
 from typing import Optional
 
+import numpy as np
 import torch
 
 
@@ -52,3 +53,14 @@ class ExperienceReplayMemory:
 
     def add(self, state, action, reward, next_state, done):
         self.buffer.append((state, action, reward, next_state, done))
+
+    def sample(self, batch_size):
+        batch = np.random.choice(len(self.buffer), batch_size, replace=False)
+        state, action, reward, next_state, done = zip(*[self.buffer[i] for i in batch])
+        return (
+            torch.stack(state),
+            torch.stack(action),
+            torch.tensor(reward, dtype=torch.float32),
+            torch.stack(next_state),
+            torch.tensor(done, dtype=torch.float32),
+        )

@@ -136,14 +136,17 @@ class Portfolio:
             dim=(batch_size, m_noncash_assets)
         comission_rate : float, default = 0.26% (maximum)
             comission rate for purchasing and selling
-        n_iter: int, default = 50
+        n_iter: int, default = 3
         number of iterations to compute the transaction remainder factor
         """
         wt_prime = self.get_end_of_period_weights(yt, wt_prev)
+
         # get end of period cash position for each example in batch
         wt_cash_prime = 1 - wt_prime.sum(dim=1)
+
         # get cash position for portfolio weight at period t+1
         wt_cash = 1 - wt.sum(dim=1)
+
         # initial transaction remainder factor
         ut_k = comission_rate * torch.abs(wt - wt_prime).sum(dim=1)
         c = comission_rate
