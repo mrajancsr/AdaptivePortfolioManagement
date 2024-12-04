@@ -66,8 +66,8 @@ class KrakenPipeLine:
         prices["low"] = prices["low"][["CASH"] + self.coins]
         prices["close"]["CASH"] = 1.0
         prices["close"] = prices["close"][["CASH"] + self.coins]
-        prices["close_to_open"] = prices["close"][["CASH"] + self.coins].div(
-            prices["open"][["CASH"] + self.coins]
+        prices["relative_price"] = prices["close"][["CASH"] + self.coins].div(
+            prices["close"][["CASH"] + self.coins].shift(1)
         )
 
 

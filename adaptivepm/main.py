@@ -67,11 +67,11 @@ def main():
     # window_size - 1 is index at time t
     # window_size - 2 is index at time t-1
     # Hence first index for pvm wt-1 is window_size - 2 index
-    pvm = PortfolioVectorMemory(n_samples=n_samples, m_assets=m_noncash_assets)
+    pvm = PortfolioVectorMemory(n_samples=n_samples, m_noncash_assets=m_noncash_assets)
 
     actor = Actor()
     critic = Critic()
-
+    yt = torch.randint(0, 10, (50, 11))
     for xt, xt_next, prev_index in get_current_and_next_batch(kraken_dl):
         # get previous weight w(t-1)
         wt_prev = pvm.get_memory_stack(prev_index)
@@ -80,10 +80,10 @@ def main():
         wt = actor(*st)
 
         # update the pvm with non cash assets only
-        pvm.update_memory_stack(wt[:, 1:], prev_index + 1)
+        pvm.update_memory_stack(wt, prev_index + 1)
 
         st_next = (xt_next, wt)
-
+        ut = port.get_transacton_remainder_factor(wt, yt, wt_prev, n_iter=3)
         q_value = critic(*st)
 
 

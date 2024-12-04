@@ -17,7 +17,7 @@ def weights_init(m):
 
 
 class Actor(nn.Module):
-    def __init__(self, input_channels=3, output_dim=12):
+    def __init__(self, input_channels=3, output_dim=11):
         """_summary_
 
         Parameters
@@ -25,7 +25,7 @@ class Actor(nn.Module):
         input_channels : int, optional
             number of features, default=3
         output_dim : int, optional
-            number of asset weights, default=12
+            number of asset weights, default=11
         """
         super(Actor, self).__init__()
         self.output_dim = output_dim
@@ -68,9 +68,10 @@ class Actor(nn.Module):
         x = self.model2(x)
         cash_bias = self.cash_bias.expand(batch_size, 1, 1, 1)
         x = torch.cat([cash_bias, x], dim=2)
-        portfolio_weights = self.softmax(x)
-
-        return portfolio_weights.view(batch_size, self.output_dim)
+        # include the cash
+        portfolio_weights = self.softmax(x).view(batch_size, self.output_dim + 1)
+        # remove cash vector
+        return portfolio_weights[:, 1:]
 
 
 class Critic(nn.Module):
@@ -124,4 +125,4 @@ class Critic(nn.Module):
         x = torch.cat([x, prev_weights], dim=1)
         # estimate the q value
         q_value = self.model2(x)
-        return q_value
+        return q_value.view(-1)

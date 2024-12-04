@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from typing import Dict, Iterator, List
 
 import pandas as pd
+import torch
 
 from adaptivepm import Asset
 
@@ -79,7 +80,7 @@ class Portfolio:
         yield from self.__assets.values()
 
     def get_relative_price(self):
-        return self.__prices["close_to_open"]
+        return self.__prices["relative_price"]
 
     def get_close_price(self):
         return self.__prices["close"]
@@ -89,6 +90,92 @@ class Portfolio:
 
     def get_low_price(self):
         return self.__prices["low"]
+
+    def get_end_of_period_weights(self, yt: torch.tensor, wt_prev: torch.tensor):
+        """Computes the wt' which is portfolio weight at the end of period t
+        c.f formula 7 in https://arxiv.org/pdf/1706.10059
+
+        Parameters
+        ----------
+        yt : torch.tensor
+            relative price vector representing market movement from t-1 to period t
+            given by close_t / close(t-1)
+            shape=(batch_size, m_noncash_assets)
+        wt_prev : torch.tensor
+            portfolio weight at the beginning of previous period
+            shape=(batch_size, m_noncash_assets)
+        """
+        batch_size = wt_prev.shape[0]
+        wt_prime = (yt * wt_prev) / (yt * wt_prev).sum(dim=1).view(batch_size, 1)
+        return wt_prime
+
+    def get_transacton_remainder_factor(
+        self,
+        wt: torch.tensor,
+        yt: torch.tensor,
+        wt_prev: torch.tensor,
+        comission_rate: float = 0.0026,
+        n_iter: int = 3,
+    ):
+        """Computes the transaction remainder factor via a iterative approach
+        c.f formula 14 and 15 in https://arxiv.org/pdf/1706.10059
+        This formula reduces the portfolio value from pt' to pt
+
+        Parameters
+        ----------
+         Parameters
+        ----------
+        wt : torch.tensor
+            portfolio vector weight at beginning of period t+1
+            dim=(batch_size, m_noncash_assets)
+        yt : torch.tensor
+            relative price vector given by close_t / close_t-1
+            dim=(batch_size, m_noncash_assets)
+        wt_prev : torch.tensor
+            portfolio vector weight at beginning of period t
+            dim=(batch_size, m_noncash_assets)
+        comission_rate : float, default = 0.26% (maximum)
+            comission rate for purchasing and selling
+        n_iter: int, default = 50
+        number of iterations to compute the transaction remainder factor
+        """
+        wt_prime = self.get_end_of_period_weights(yt, wt_prev)
+        # get end of period cash position for each example in batch
+        wt_cash_prime = 1 - wt_prime.sum(dim=1)
+        # get cash position for portfolio weight at period t+1
+        wt_cash = 1 - wt.sum(dim=1)
+        # initial transaction remainder factor
+        ut_k = comission_rate * torch.abs(wt - wt_prime).sum(dim=1)
+        c = comission_rate
+        for _ in range(n_iter):
+            update_term = torch.relu(wt_prime - ut_k.unsqueeze(1) * wt).sum(dim=1)
+            ut_k = (
+                1
+                / (1 - c * wt_cash)
+                * (1 - c * wt_cash_prime - c * (2 - c) * update_term)
+            )
+        return ut_k
+
+    def get_reward(self, wt: torch.tensor, yt: torch.tensor, wt_prev: torch.tensor):
+        """_summary_
+
+        Parameters
+        ----------
+        wt : torch.tensor
+            portfolio vector for beginning of period t+1
+        yt : torch.tensor
+            relative price vector given by Close_t / Close(t-1)
+        wt_prev : torch.tensor
+            portfolio vector weight for beginning of period t
+        """
+        batch_size = wt.shape[0]
+        ut = self.get_transacton_remainder_factor(wt, yt, wt_prev)
+
+        # portfolio return before transaction cost
+        portfolio_return = torch.bmm(yt.unsqueeze(dim=1), wt.unsqueeze(dim=2)).squeeze()
+        adjusted_return = ut * portfolio_return
+        reward = torch.log(adjusted_return) / batch_size
+        return reward
 
 
 if __name__ == "__main__":

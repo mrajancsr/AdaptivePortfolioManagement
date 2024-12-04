@@ -13,14 +13,16 @@ class PortfolioVectorMemory:
     """
 
     n_samples: int
-    m_assets: int
+    m_noncash_assets: int
     initial_weight: Optional[torch.tensor] = None
     memory: torch.tensor = field(init=False)
     device: torch.device = field(init=False)
 
     def __post_init__(self):
         self.device = torch.device("mps" if torch.mps.is_available() else "cpu")
-        self.memory = torch.ones(self.n_samples, self.m_assets) / self.m_assets
+        self.memory = torch.ones(self.n_samples, self.m_noncash_assets) / (
+            self.m_noncash_assets + 1
+        )
         self.memory = self.memory.to(self.device)
 
     def update_memory_stack(self, new_weights: torch.tensor, indices: torch.tensor):
