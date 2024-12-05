@@ -175,10 +175,10 @@ class Portfolio:
         ut = self.get_transacton_remainder_factor(wt, yt, wt_prev)
 
         # portfolio return before transaction cost
-        portfolio_return = torch.bmm(yt.unsqueeze(dim=1), wt.unsqueeze(dim=2)).squeeze()
-        adjusted_return = ut * portfolio_return
-        reward = torch.log(adjusted_return) / batch_size
-        return reward
+        portfolio_return = (yt * wt_prev).sum(dim=1)
+        rt = torch.log(ut * portfolio_return)
+
+        return rt / batch_size
 
 
 if __name__ == "__main__":

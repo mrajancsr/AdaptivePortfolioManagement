@@ -3,6 +3,8 @@
 # Actor will estimate the policy
 # Critic will estimate the Q value function
 
+from typing import Tuple
+
 import torch
 import torch.nn as nn
 
@@ -10,7 +12,7 @@ import torch.nn as nn
 def weights_init(m):
     classname = m.__class__.__name__
     if classname.find("Conv") != -1:
-        nn.init.kaiming_uniform(m.weight.data, nonlinearity="relu")
+        nn.init.kaiming_normal(m.weight.data, nonlinearity="relu")
     elif classname.find("BatchNorm") != -1:
         nn.init.normal_(m.weight.data, 1.0, 0.02)
         nn.init.constant_(m.bias.data, 0)
@@ -38,11 +40,11 @@ class Actor(nn.Module):
             nn.LeakyReLU(0.01, inplace=True),
         )
         self.model2 = nn.Sequential(nn.Conv2d(21, 1, kernel_size=(1, 1), stride=1))
-        self.cash_bias = nn.Parameter(torch.full((1, 1, 1), 0.2))
+        self.cash_bias = nn.Parameter(torch.full((1, 1, 1), 0.3))
         self.softmax = nn.Softmax(dim=2)
         self.apply(weights_init)
 
-    def forward(self, price_tensor: torch.tensor, pvm: torch.tensor) -> torch.tensor:
+    def forward(self, state: Tuple[torch.tensor, torch.tensor]) -> torch.tensor:
         """performs a forward pass and returns portfolio weights at time t
         c.f pg 14-15 from https://arxiv.org/pdf/1706.10059
 
@@ -58,20 +60,21 @@ class Actor(nn.Module):
 
         Returns
         -------
-        torch.tensor, dim = (batch_size, massets)
-            action at time t
+        torch.tensor, dim = (batch_size, m_noncash_assets)
+            action or current weights at time t
         """
+        price_tensor, prev_weights = state
         batch_size = price_tensor.shape[0]
         x = self.model(price_tensor)
-        prev_weights = pvm.unsqueeze(2).repeat(1, 1, 1).unsqueeze(1)
+        prev_weights = prev_weights.unsqueeze(2).repeat(1, 1, 1).unsqueeze(1)
         x = torch.cat([x, prev_weights], dim=1)
         x = self.model2(x)
         cash_bias = self.cash_bias.expand(batch_size, 1, 1, 1)
         x = torch.cat([cash_bias, x], dim=2)
         # include the cash
-        portfolio_weights = self.softmax(x).view(batch_size, self.output_dim + 1)
+        current_weights = self.softmax(x).view(batch_size, self.output_dim + 1)
         # remove cash vector
-        return portfolio_weights[:, 1:]
+        return current_weights[:, 1:]
 
 
 class Critic(nn.Module):
@@ -99,30 +102,42 @@ class Critic(nn.Module):
             nn.Conv2d(21, 20, kernel_size=(1, 1), stride=1),
             nn.LeakyReLU(0.01, inplace=True),
             nn.Flatten(),
-            nn.Linear(20 * m_assets, 1),
+            nn.Linear(20 * m_assets, 128),
+            nn.LeakyReLU(0.01, inplace=True),
         )
+        self.model3 = nn.Linear(128, 1)
         self.apply(weights_init)
 
-    def forward(self, price_tensor: torch.tensor, pvm: torch.tensor) -> torch.tensor:
-        """performs forward pass and returns Q value for each price-action pair
+    def forward(
+        self, state: Tuple[torch.tensor, torch.tensor], current_weights: torch.tensor
+    ) -> torch.tensor:
+        """_summary_
 
         Parameters
         ----------
-        price_tensor : torch.tensor
-            price tensor Xt comprised of close, high and low prices
-            dim = (batch_size, kfeatures, m_assets, window_size)
-            window_size pretains to last 50 trading prices
-        pvm : torch.tensor
-            the previous weights w(t-1) which is the previous action
+        state : Tuple[torch.tensor, torch.tensor]
+            composed of price tensor Xt and previous action wt_prev
+            price_tensor : torch.tensor
+                price tensor Xt comprised of close, high and low prices
+                dim = (batch_size, kfeatures, m_assets, window_size)
+                window_size pretains to last 50 trading prices
+            wt_prev : torch.tensor
+        current_weights : torch.tensor
+            the current action wt
 
         Returns
         -------
         torch.tensor
-            Q value for each state-action pair
+            _description_
         """
+        price_tensor = state[0]
+        prev_weights = state[1]
         x = self.model(price_tensor)
-        prev_weights = pvm.unsqueeze(2).repeat(1, 1, 1).unsqueeze(1)
+        prev_weights = prev_weights.unsqueeze(2).repeat(1, 1, 1).unsqueeze(1)
         x = torch.cat([x, prev_weights], dim=1)
+        x = self.model2(x)
+        x = torch.cat([x, current_weights])
+
         # estimate the q value
         q_value = self.model2(x)
         return q_value.view(-1)

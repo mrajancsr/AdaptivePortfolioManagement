@@ -1,6 +1,6 @@
 from collections import deque
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Optional, Tuple
 
 import numpy as np
 import torch
@@ -39,11 +39,13 @@ class ExperienceReplayMemory:
     c.f https://www.cs.toronto.edu/~vmnih/docs/dqn.pdf
     by storing the experience (Xt, w(t-1), wt, rt, X(t+1), done)"""
 
-    n_samples: int
     buffer: deque = field(init=False)
 
     def __post_init__(self):
-        self.buffer = deque()
+        self.buffer = deque(maxlen=1000000)
+
+    def __repr__(self):
+        return ""
 
     def __len__(self):
         return len(self.buffer)
@@ -51,16 +53,24 @@ class ExperienceReplayMemory:
     def __getitem__(self, idx):
         return self.buffer[idx]
 
-    def add(self, state, action, reward, next_state, done):
-        self.buffer.append((state, action, reward, next_state, done))
+    def add(self, state, action, reward, next_state, batch_size):
+        experience = (
+            (
+                (state[0][i], state[1][i]),
+                action[i],
+                reward[i],
+                (next_state[0][i], next_state[1][i]),
+            )
+            for i in range(batch_size)
+        )
+        self.buffer.extend(experience)
 
-    def sample(self, batch_size):
+    def sample(self, batch_size) -> Tuple[...]:
         batch = np.random.choice(len(self.buffer), batch_size, replace=False)
-        state, action, reward, next_state, done = zip(*[self.buffer[i] for i in batch])
+        state, action, reward, next_state = zip(*(self.buffer[i] for i in batch))
         return (
-            torch.stack(state),
+            state,
             torch.stack(action),
             torch.tensor(reward, dtype=torch.float32),
-            torch.stack(next_state),
-            torch.tensor(done, dtype=torch.float32),
+            next_state,
         )
